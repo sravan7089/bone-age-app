@@ -674,6 +674,74 @@ elif page == "Train":
 #             else:
 #                 st.success("✅ Predicted bone age matches chronological age.")
 
+# elif page == "Inference":
+#     col1, col2, col3 = st.columns([1,2,1])
+#     with col2:
+#         st.image("logo.png", width=200)
+
+#     st.set_page_config(page_title="Bone Age Predictor", layout="wide")
+
+#     st.title("🦴 Bone Age Prediction with Explainability")
+#     st.markdown("AI-powered skeletal maturity assessment using X-rays, gender, and age.")
+
+#     uploaded_img = st.file_uploader("📤 Upload X-ray Image", type=["png", "jpg", "jpeg"])
+#     gender = st.selectbox("Gender", ["Male", "Female"])
+#     chrono_age = st.number_input("Chronological Age (months)", min_value=0, max_value=240, value=120)
+
+#     if uploaded_img:
+#         import torch
+#         import torch.nn as nn
+#         import numpy as np
+#         import shap
+#         import matplotlib.pyplot as plt
+#         from torchvision import models, transforms
+#         from PIL import Image
+#         import cv2
+#         import pandas as pd
+
+#         # ---- Preprocess image ----
+#         image = Image.open(uploaded_img).convert("RGB")
+#         transform = transforms.Compose([
+#             transforms.Resize((224, 224)),
+#             transforms.ToTensor(),
+#             transforms.Normalize([0.485, 0.456, 0.406],
+#                                  [0.229, 0.224, 0.225])
+#         ])
+#         img_tensor = transform(image).unsqueeze(0)
+#         meta_tensor = torch.tensor([[1 if gender == "Male" else 0, chrono_age]], dtype=torch.float32)
+
+#         # ---- Load your FULL trained model ----
+#         base_model = models.resnet18(weights=None)
+#         in_features = base_model.fc.in_features
+#         base_model.fc = nn.Identity()
+
+#         class CombinedModel(nn.Module):
+#             def __init__(self, base_model, in_features):
+#                 super().__init__()
+#                 self.cnn = base_model
+#                 self.fc1 = nn.Linear(in_features + 2, 128)  # gender + age
+#                 self.fc2 = nn.Linear(128, 1)
+
+#             def forward(self, x_img, x_meta):
+#                 x_img = self.cnn(x_img)
+#                 x = torch.cat([x_img, x_meta], dim=1)
+#                 x = torch.relu(self.fc1(x))
+#                 x = self.fc2(x)
+#                 return x
+
+#         model = CombinedModel(base_model, in_features)
+
+#         # ✅ load the model you trained on full dataset
+#         model.load_state_dict(torch.load("boneage_model.pth", map_location="cpu"))
+#         model.eval()
+
+#         # ---- Prediction ----
+#         with torch.no_grad():
+#             prediction = model(img_tensor, meta_tensor).item()
+
+# ---------------------------
+# Page 3: Inference
+# ---------------------------
 elif page == "Inference":
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
@@ -687,6 +755,26 @@ elif page == "Inference":
     uploaded_img = st.file_uploader("📤 Upload X-ray Image", type=["png", "jpg", "jpeg"])
     gender = st.selectbox("Gender", ["Male", "Female"])
     chrono_age = st.number_input("Chronological Age (months)", min_value=0, max_value=240, value=120)
+
+    # ---------------------------
+    # Hybrid model fetch (GitHub LFS + Google Drive fallback)
+    # ---------------------------
+    import os, gdown
+
+    MODEL_PATH = "boneage_model.pth"
+    FILE_ID = "YOUR_DRIVE_FILE_ID"  # 🔴 replace with your Google Drive file ID
+    URL = f"https://drive.google.com/uc?id={FILE_ID}"
+
+    def ensure_model():
+        if not os.path.exists(MODEL_PATH):
+            with st.spinner("Fetching model weights..."):
+                try:
+                    gdown.download(URL, MODEL_PATH, quiet=False)
+                    st.success("✅ Model downloaded from Google Drive")
+                except Exception as e:
+                    st.error(f"❌ Could not download model: {e}")
+
+    ensure_model()
 
     if uploaded_img:
         import torch
@@ -731,15 +819,21 @@ elif page == "Inference":
 
         model = CombinedModel(base_model, in_features)
 
-        # ✅ load the model you trained on full dataset
-        model.load_state_dict(torch.load("boneage_model.pth", map_location="cpu"))
-        model.eval()
+        try:
+            model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+            model.eval()
+        except Exception as e:
+            st.error(f"❌ Failed to load model: {e}")
+            st.stop()
 
         # ---- Prediction ----
         with torch.no_grad():
             prediction = model(img_tensor, meta_tensor).item()
 
-        # Layout: Image left, results right
+        # (rest of your inference code: results, Grad-CAM, SHAP, comparison tabs...)
+
+
+         # Layout: Image left, results right
         col1, col2 = st.columns([1,1])
         with col1:
             st.image(image, caption="Uploaded X-ray", use_container_width=True)
@@ -1515,3 +1609,4 @@ elif page == "Inference":
 #                 st.warning(f"🔴 Predicted bone age is **delayed** by {chrono_age - prediction:.1f} months.")
 #             else:
 #                 st.success("✅ Predicted bone age matches chronological age.")
+

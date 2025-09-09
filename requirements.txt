@@ -7,8 +7,8 @@ matplotlib==3.9.0
 Pillow==10.3.0
 
 # PyTorch + torchvision (compatible with Python 3.11)
-torch==2.0.1
-torchvision==0.15.2
+torch==2.2.2
+torchvision==0.17.1
 
 # SHAP for explainability
 shap==0.45.1
@@ -21,4 +21,5 @@ scikit-learn==1.5.0
 
 # Google Drive download helper
 gdown==4.7.1
+
 

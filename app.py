@@ -762,7 +762,8 @@ elif page == "Inference":
     import os, gdown
 
     MODEL_PATH = "boneage_model.pth"
-    FILE_ID = "YOUR_DRIVE_FILE_ID"  # 🔴 replace with your Google Drive file ID
+#https://drive.google.com/file/d/1oD9hWWnwtFD8Qd4UwPMGruTyKYYZuBiK/view?usp=sharing
+    FILE_ID = "1oD9hWWnwtFD8Qd4UwPMGruTyKYYZuBiK"  # 🔴 replace with your Google Drive file ID
     URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
     def ensure_model():
@@ -1609,4 +1610,5 @@ elif page == "Inference":
 #                 st.warning(f"🔴 Predicted bone age is **delayed** by {chrono_age - prediction:.1f} months.")
 #             else:
 #                 st.success("✅ Predicted bone age matches chronological age.")
+
 

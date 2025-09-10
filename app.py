@@ -13,7 +13,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import cv2
 
-# ✅ Page config must be at the top, only once
+# ✅ Page config must be at the top
 st.set_page_config(page_title="Bone Age Predictor", layout="wide")
 
 # ---------------------------
@@ -30,16 +30,13 @@ class BoneAgeDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        img_path = os.path.join(self.img_dir, f"{row['id']}.png")  # assumes filenames like id.png
+        img_path = os.path.join(self.img_dir, f"{row['id']}.png")
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
-
-        gender = np.array([row["male"]], dtype=np.float32)   # clinical metadata
-        boneage = np.array([row["boneage"]], dtype=np.float32)  # target
-
+        gender = np.array([row["male"]], dtype=np.float32)
+        boneage = np.array([row["boneage"]], dtype=np.float32)
         return image, gender, boneage
-
 
 # ---------------------------
 # Model: ResNet18 + metadata
@@ -58,7 +55,6 @@ class BoneAgeModel(nn.Module):
         x = torch.cat([x1, x2], dim=1)
         out = self.fc(x)
         return out
-
 
 # ---------------------------
 # Streamlit App
@@ -102,7 +98,6 @@ if page == "Overview":
                 except:
                     pass
 
-
 # ---------------------------
 # Page 2: Training
 # ---------------------------
@@ -118,10 +113,7 @@ elif page == "Train":
 
     if csv_file and img_folder:
         df = pd.read_csv(csv_file)
-
-        # Subsample for quick testing (⚡ you can remove later for full training)
-        df = df.sample(1000, random_state=42).reset_index(drop=True)
-
+        df = df.sample(1000, random_state=42).reset_index(drop=True)  # quick testing
         st.write(f"Using {len(df)} samples for training (subset).")
 
         if st.button("Start Training"):
@@ -157,7 +149,7 @@ elif page == "Train":
             criterion = nn.MSELoss()
             optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-            num_epochs = 2  # quick run
+            num_epochs = 2
             progress = st.progress(0)
             status = st.empty()
 
@@ -168,16 +160,13 @@ elif page == "Train":
                 running_loss = 0.0
                 for i, (imgs, meta, targets) in enumerate(train_loader):
                     imgs, meta, targets = imgs.to(device), meta.to(device), targets.to(device).unsqueeze(1)
-
                     optimizer.zero_grad()
                     outputs = model(imgs, meta)
                     loss = criterion(outputs, targets)
                     loss.backward()
                     optimizer.step()
-
                     running_loss += loss.item()
 
-                    # Update UI
                     batch_progress = (i + 1) / len(train_loader)
                     total_progress = (epoch + batch_progress) / num_epochs
                     progress.progress(total_progress)
@@ -187,7 +176,6 @@ elif page == "Train":
 
             torch.save(model.state_dict(), "boneage_model.pth")
             st.success("✅ Training complete. Model saved as boneage_model.pth")
-
 
 # ---------------------------
 # Page 3: Inference
@@ -206,7 +194,7 @@ elif page == "Inference":
 
     import gdown
     MODEL_PATH = "boneage_model.pth"
-    FILE_ID = "1oD9hWWnwtFD8Qd4UwPMGruTyKYYZuBiK"  # Google Drive file ID
+    FILE_ID = "1oD9hWWnwtFD8Qd4UwPMGruTyKYYZuBiK"
     URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
     def ensure_model():
@@ -241,7 +229,7 @@ elif page == "Inference":
             def __init__(self, base_model, in_features):
                 super().__init__()
                 self.cnn = base_model
-                self.fc1 = nn.Linear(in_features + 2, 128)  # gender + age
+                self.fc1 = nn.Linear(in_features + 2, 128)
                 self.fc2 = nn.Linear(128, 1)
 
             def forward(self, x_img, x_meta):
@@ -252,7 +240,6 @@ elif page == "Inference":
                 return x
 
         model = CombinedModel(base_model, in_features)
-
         try:
             model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
             model.eval()
@@ -263,18 +250,17 @@ elif page == "Inference":
         with torch.no_grad():
             prediction = model(img_tensor, meta_tensor).item()
 
-        # Layout: Image left, results right
+        # Layout
         col1, col2 = st.columns([1,1])
         with col1:
             st.image(image, caption="Uploaded X-ray")
-
         with col2:
             st.markdown("### Prediction Results")
             st.metric("Chronological Age", f"{chrono_age} months")
-            st.metric("Predicted Bone Age", f"{prediction:.1f} months", 
+            st.metric("Predicted Bone Age", f"{prediction:.1f} months",
                       delta=f"{prediction - chrono_age:.1f} months")
 
-        # ---- Tabs for explanations ----
+        # Tabs
         tab1, tab2, tab3 = st.tabs(["Grad-CAM", "SHAP Metadata", "Age Comparison"])
 
         # ---------------------------
@@ -349,24 +335,23 @@ elif page == "Inference":
             feature_names = ["Gender(Male=1)", "Chronological Age (months)"]
             shap_values.feature_names = feature_names
 
-            try:
-                fig, ax = plt.subplots()
-                shap.plots.waterfall(shap_values[0], show=False)
-                st.pyplot(fig)
-            except Exception:
-                st.warning("⚠️ SHAP waterfall failed. Showing bar chart instead.")
+            # Bar chart fallback for single-sample
+            if shap_values.values.shape[0] == 1:
                 df_shap = pd.DataFrame({
                     "Feature": feature_names,
                     "SHAP Value": shap_values.values[0]
                 })
                 st.bar_chart(df_shap.set_index("Feature"))
+            else:
+                fig, ax = plt.subplots()
+                shap.plots.waterfall(shap_values[0], show=False)
+                st.pyplot(fig)
 
         # ---------------------------
         # TAB 3: Age Comparison
         # ---------------------------
         with tab3:
             st.subheader("📊 Chronological vs Predicted Age")
-
             ages = ["Chronological Age", "Predicted Bone Age"]
             values = [chrono_age, prediction]
 
@@ -382,21 +367,17 @@ elif page == "Inference":
             if delta > 0:
                 st.info(f"🟢 Predicted bone age is **advanced** by {delta:.1f} months compared to chronological age.")
                 st.markdown(
-                    "💡 **Clinical Interpretation:** The model predicts this child's skeletal maturity is **advanced** "
-                    "relative to their actual chronological age. In clinical practice, this may suggest **early or precocious skeletal development**, "
-                    "which can occur in conditions such as **early puberty** or certain **endocrine disorders**."
+                    "💡 **Clinical Interpretation:** The model predicts skeletal maturity is **advanced** "
+                    "relative to chronological age, which may suggest **early puberty** or endocrine disorders."
                 )
             elif delta < 0:
                 st.warning(f"🔴 Predicted bone age is **delayed** by {-delta:.1f} months compared to chronological age.")
                 st.markdown(
-                    "💡 **Clinical Interpretation:** The model predicts this child's skeletal maturity is **delayed** "
-                    "relative to their actual chronological age. In clinical settings, this may indicate **growth delay**, "
-                    "which could be associated with conditions such as **growth hormone deficiency**, **malnutrition**, "
-                    "or other **systemic illnesses**."
+                    "💡 **Clinical Interpretation:** Skeletal maturity is **delayed**; possible causes include "
+                    "**growth hormone deficiency, malnutrition, or systemic illnesses**."
                 )
             else:
                 st.success("✅ Predicted bone age matches chronological age.")
                 st.markdown(
-                    "💡 **Clinical Interpretation:** The predicted bone age **matches** the child's chronological age. "
-                    "This suggests that skeletal development is proceeding at a normal rate."
+                    "💡 **Clinical Interpretation:** Skeletal development is proceeding at a normal rate."
                 )

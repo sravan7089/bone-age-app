@@ -325,37 +325,30 @@ elif page == "Inference":
                     preds = model(img_tensor.repeat(x_meta_tensor.size(0),1,1,1), x_meta_tensor)
                 return preds.numpy()
 
-            # Background dataset for SHAP
-            background = np.array([
-                [0, 60],   # Female, 5 years
-                [1, 100],  # Male, ~8 years
-                [0, 150],  # Female, ~12 years
-                [1, 200]   # Male, ~16 years
-            ])
-
-            test_sample = np.array([[1 if gender == "Male" else 0, chrono_age]])
-
-            explainer = shap.KernelExplainer(metadata_predict, background)
-            shap_values = explainer.shap_values(test_sample, nsamples=100)
+            explainer = shap.Explainer(metadata_predict, np.array([[1 if gender == "Male" else 0, chrono_age]]))
+            shap_values = explainer(np.array([[1 if gender == "Male" else 0, chrono_age]]))
 
             feature_names = ["Gender(Male=1)", "Chronological Age (months)"]
+            shap_values.feature_names = feature_names
 
-            st.set_option("deprecation.showPyplotGlobalUse", False)
-            shap.force_plot(
-                explainer.expected_value,
-                shap_values[0],
-                test_sample[0],
-                feature_names=feature_names,
-                matplotlib=True,
-                show=False
-            )
-            st.pyplot(bbox_inches='tight', dpi=120, pad_inches=0)
+            try:
+                fig, ax = plt.subplots()
+                shap.plots.waterfall(shap_values[0], show=False)
+                st.pyplot(fig)
+            except Exception:
+                st.warning("⚠️ SHAP waterfall failed. Showing bar chart instead.")
+                df_shap = pd.DataFrame({
+                    "Feature": feature_names,
+                    "SHAP Value": shap_values.values[0]
+                })
+                st.bar_chart(df_shap.set_index("Feature"))
 
         # ---------------------------
         # Tab 3: Age Comparison
         # ---------------------------
         with tab3:
             st.subheader("📊 Chronological vs Predicted Age")
+
             ages = ["Chronological Age", "Predicted Bone Age"]
             values = [chrono_age, prediction]
 
@@ -370,10 +363,26 @@ elif page == "Inference":
             delta = prediction - chrono_age
             if delta > 0:
                 st.info(f"🟢 Predicted bone age is **advanced** by {delta:.1f} months compared to chronological age.")
+                st.markdown(
+                    "💡 **Clinical Interpretation:** The model predicts this child's skeletal maturity is **advanced** "
+                    "relative to their actual chronological age. In clinical practice, this may suggest **early or precocious skeletal development**, "
+                    "which can occur in conditions such as **early puberty** or certain **endocrine disorders**."
+                )
             elif delta < 0:
                 st.warning(f"🔴 Predicted bone age is **delayed** by {-delta:.1f} months compared to chronological age.")
+                st.markdown(
+                    "💡 **Clinical Interpretation:** The model predicts this child's skeletal maturity is **delayed** "
+                    "relative to their actual chronological age. In clinical settings, this may indicate **growth delay**, "
+                    "which could be associated with conditions such as **growth hormone deficiency**, **malnutrition**, "
+                    "or other **systemic illnesses**."
+                )
             else:
                 st.success("✅ Predicted bone age matches chronological age.")
+                st.markdown(
+                    "💡 **Clinical Interpretation:** The predicted bone age **matches** the child's chronological age. "
+                    "This suggests that skeletal development is proceeding at a normal rate."
+                )
+
 
 
 
@@ -756,4 +765,5 @@ elif page == "Inference":
 #                 st.warning(f"🔴 Predicted bone age is **delayed** by {-delta:.1f} months compared to chronological age.")
 #             else:
 #                 st.success("✅ Predicted bone age matches chronological age.")
+
 

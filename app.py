@@ -10,14 +10,17 @@ import torch.optim as optim
 from torchvision import models, transforms
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from sklearn.model_selection import train_test_split
 import cv2
+import gdown
+import shap
 
-# ✅ Page config must be at the top
+# ---------------------------
+# Page config
+# ---------------------------
 st.set_page_config(page_title="Bone Age Predictor", layout="wide")
 
 # ---------------------------
-# Custom Dataset
+# Dataset class
 # ---------------------------
 class BoneAgeDataset(Dataset):
     def __init__(self, df, img_dir, transform=None):
@@ -39,7 +42,7 @@ class BoneAgeDataset(Dataset):
         return image, gender, boneage
 
 # ---------------------------
-# Model: ResNet18 + metadata
+# Model class
 # ---------------------------
 class BoneAgeModel(nn.Module):
     def __init__(self):
@@ -57,25 +60,25 @@ class BoneAgeModel(nn.Module):
         return out
 
 # ---------------------------
-# Streamlit App
+# Sidebar navigation
 # ---------------------------
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Select Page", ["Overview", "Train", "Inference"])
 
-# Keep dataset + folder path across pages
+# Session state
 if "df" not in st.session_state:
     st.session_state.df = None
 if "folder_path" not in st.session_state:
     st.session_state.folder_path = None
 
 # ---------------------------
-# Page 1: Dataset Overview
+# Page: Dataset Overview
 # ---------------------------
 if page == "Overview":
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.image("logo.png", width=200)
-        
+
     st.title("📊 Dataset Overview")
 
     uploaded_csv = st.file_uploader("Upload CSV file", type=["csv"])
@@ -99,7 +102,7 @@ if page == "Overview":
                     pass
 
 # ---------------------------
-# Page 2: Training
+# Page: Train
 # ---------------------------
 elif page == "Train":
     col1, col2, col3 = st.columns([1,2,1])
@@ -113,7 +116,7 @@ elif page == "Train":
 
     if csv_file and img_folder:
         df = pd.read_csv(csv_file)
-        df = df.sample(1000, random_state=42).reset_index(drop=True)  # quick testing
+        df = df.sample(1000, random_state=42).reset_index(drop=True)
         st.write(f"Using {len(df)} samples for training (subset).")
 
         if st.button("Start Training"):
@@ -152,7 +155,6 @@ elif page == "Train":
             num_epochs = 2
             progress = st.progress(0)
             status = st.empty()
-
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model.to(device)
 
@@ -166,7 +168,6 @@ elif page == "Train":
                     loss.backward()
                     optimizer.step()
                     running_loss += loss.item()
-
                     batch_progress = (i + 1) / len(train_loader)
                     total_progress = (epoch + batch_progress) / num_epochs
                     progress.progress(total_progress)
@@ -178,7 +179,7 @@ elif page == "Train":
             st.success("✅ Training complete. Model saved as boneage_model.pth")
 
 # ---------------------------
-# Page 3: Inference
+# Page: Inference
 # ---------------------------
 elif page == "Inference":
     col1, col2, col3 = st.columns([1,2,1])
@@ -192,7 +193,6 @@ elif page == "Inference":
     gender = st.selectbox("Gender", ["Male", "Female"])
     chrono_age = st.number_input("Chronological Age (months)", min_value=0, max_value=240, value=120)
 
-    import gdown
     MODEL_PATH = "boneage_model.pth"
     FILE_ID = "1oD9hWWnwtFD8Qd4UwPMGruTyKYYZuBiK"
     URL = f"https://drive.google.com/uc?id={FILE_ID}"
@@ -209,8 +209,6 @@ elif page == "Inference":
     ensure_model()
 
     if uploaded_img:
-        import shap
-
         image = Image.open(uploaded_img).convert("RGB")
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -250,7 +248,6 @@ elif page == "Inference":
         with torch.no_grad():
             prediction = model(img_tensor, meta_tensor).item()
 
-        # Layout
         col1, col2 = st.columns([1,1])
         with col1:
             st.image(image, caption="Uploaded X-ray")
@@ -260,11 +257,10 @@ elif page == "Inference":
             st.metric("Predicted Bone Age", f"{prediction:.1f} months",
                       delta=f"{prediction - chrono_age:.1f} months")
 
-        # Tabs
         tab1, tab2, tab3 = st.tabs(["Grad-CAM", "SHAP Metadata", "Age Comparison"])
 
         # ---------------------------
-        # TAB 1: Grad-CAM
+        # Tab 1: Grad-CAM
         # ---------------------------
         with tab1:
             st.subheader("🔍 Grad-CAM Heatmap")
@@ -318,7 +314,7 @@ elif page == "Inference":
             st.image(Image.fromarray(superimposed), caption="Grad-CAM Heatmap")
 
         # ---------------------------
-        # TAB 2: SHAP Metadata
+        # Tab 2: SHAP Metadata
         # ---------------------------
         with tab2:
             st.subheader("📈 SHAP Metadata Explanation")
@@ -335,20 +331,18 @@ elif page == "Inference":
             feature_names = ["Gender(Male=1)", "Chronological Age (months)"]
             shap_values.feature_names = feature_names
 
-            # Bar chart fallback for single-sample
-            if shap_values.values.shape[0] == 1:
-                df_shap = pd.DataFrame({
-                    "Feature": feature_names,
-                    "SHAP Value": shap_values.values[0]
-                })
-                st.bar_chart(df_shap.set_index("Feature"))
-            else:
-                fig, ax = plt.subplots()
-                shap.plots.waterfall(shap_values[0], show=False)
-                st.pyplot(fig)
+            # Robust bar plot
+            shap_vals = shap_values.values[0]
+            fig, ax = plt.subplots()
+            ax.barh(feature_names, shap_vals, color="skyblue")
+            for i, v in enumerate(shap_vals):
+                ax.text(v + 0.01*np.sign(v), i, f"{v:.2f}", va='center')
+            ax.set_xlabel("SHAP Value")
+            ax.set_title("SHAP Metadata Contribution")
+            st.pyplot(fig)
 
         # ---------------------------
-        # TAB 3: Age Comparison
+        # Tab 3: Age Comparison
         # ---------------------------
         with tab3:
             st.subheader("📊 Chronological vs Predicted Age")
@@ -366,18 +360,7 @@ elif page == "Inference":
             delta = prediction - chrono_age
             if delta > 0:
                 st.info(f"🟢 Predicted bone age is **advanced** by {delta:.1f} months compared to chronological age.")
-                st.markdown(
-                    "💡 **Clinical Interpretation:** The model predicts skeletal maturity is **advanced** "
-                    "relative to chronological age, which may suggest **early puberty** or endocrine disorders."
-                )
             elif delta < 0:
                 st.warning(f"🔴 Predicted bone age is **delayed** by {-delta:.1f} months compared to chronological age.")
-                st.markdown(
-                    "💡 **Clinical Interpretation:** Skeletal maturity is **delayed**; possible causes include "
-                    "**growth hormone deficiency, malnutrition, or systemic illnesses**."
-                )
             else:
                 st.success("✅ Predicted bone age matches chronological age.")
-                st.markdown(
-                    "💡 **Clinical Interpretation:** Skeletal development is proceeding at a normal rate."
-                )

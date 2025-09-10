@@ -1,16 +1,13 @@
 streamlit==1.36.0
 pandas==2.2.2
+matplotlib==3.9.2
+pillow==10.4.0
 numpy==1.26.4
-matplotlib==3.9.0
-Pillow==10.3.0
-
-torch==2.2.2
-torchvision==0.17.2
-
-scikit-learn==1.5.0
+scikit-learn==1.5.2
+torch==2.0.1
+torchvision==0.15.2
+gdown==5.2.0
 shap==0.45.1
-opencv-python-headless==4.9.0.80
-gdown==4.7.1
-
+opencv-python-headless==4.10.0.84
 
 

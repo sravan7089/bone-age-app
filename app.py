@@ -289,7 +289,9 @@ elif page == "Inference":
         # Layout: Image left, results right
         col1, col2 = st.columns([1,1])
         with col1:
-            st.image(image, caption="Uploaded X-ray", use_container_width=True)
+            #st.image(image, caption="Uploaded X-ray", use_container_width=True)
+            st.image(np.array(image), caption="Uploaded X-ray", use_container_width=True)
+
         with col2:
             st.markdown("### Prediction Results")
             st.metric("Chronological Age", f"{chrono_age} months")
@@ -409,6 +411,7 @@ elif page == "Inference":
                     "💡 **Clinical Interpretation:** The predicted bone age **matches** the child's chronological age. "
                     "This suggests that skeletal development is proceeding at a normal rate."
                 )
+
 
 
 

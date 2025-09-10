@@ -314,7 +314,7 @@ elif page == "Inference":
             st.image(Image.fromarray(superimposed), caption="Grad-CAM Heatmap")
 
         # ---------------------------
-        # Tab 2: SHAP Metadata (KernelExplainer)
+        # Tab 2: SHAP Metadata
         # ---------------------------
         with tab2:
             st.subheader("📈 SHAP Metadata Explanation")
@@ -325,24 +325,17 @@ elif page == "Inference":
                     preds = model(img_tensor.repeat(x_meta_tensor.size(0),1,1,1), x_meta_tensor)
                 return preds.numpy()
 
-            # Background dataset for SHAP
-            background = np.array([
-                [0, 60],   # Female, 5 years
-                [1, 100],  # Male, ~8 years
-                [0, 150],  # Female, ~12 years
-                [1, 200]   # Male, ~16 years
-            ])
-
-            test_sample = np.array([[1 if gender == "Male" else 0, chrono_age]])
-
-            explainer = shap.KernelExplainer(metadata_predict, background)
-            shap_values = explainer.shap_values(test_sample, nsamples=100)
+            explainer = shap.Explainer(metadata_predict, np.array([[1 if gender == "Male" else 0, chrono_age]]))
+            shap_values = explainer(np.array([[1 if gender == "Male" else 0, chrono_age]]))
 
             feature_names = ["Gender(Male=1)", "Chronological Age (months)"]
+            shap_values.feature_names = feature_names
 
+            # Robust bar plot
+            shap_vals = shap_values.values[0]
             fig, ax = plt.subplots()
-            ax.barh(feature_names, shap_values[0], color="skyblue")
-            for i, v in enumerate(shap_values[0]):
+            ax.barh(feature_names, shap_vals, color="skyblue")
+            for i, v in enumerate(shap_vals):
                 ax.text(v + 0.01*np.sign(v), i, f"{v:.2f}", va='center')
             ax.set_xlabel("SHAP Value")
             ax.set_title("SHAP Metadata Contribution")

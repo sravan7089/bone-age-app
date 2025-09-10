@@ -11,6 +11,7 @@ from torchvision import models, transforms
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from sklearn.model_selection import train_test_split
+import cv2
 
 # ✅ Page config must be at the top, only once
 st.set_page_config(page_title="Bone Age Predictor", layout="wide")
@@ -21,7 +22,7 @@ st.set_page_config(page_title="Bone Age Predictor", layout="wide")
 class BoneAgeDataset(Dataset):
     def __init__(self, df, img_dir, transform=None):
         self.df = df
-        self.img_dir = a
+        self.img_dir = img_dir
         self.transform = transform
 
     def __len__(self):
@@ -124,25 +125,6 @@ elif page == "Train":
         st.write(f"Using {len(df)} samples for training (subset).")
 
         if st.button("Start Training"):
-            class BoneAgeDataset(Dataset):
-                def __init__(self, dataframe, img_dir, transform=None):
-                    self.df = dataframe
-                    self.img_dir = img_dir
-                    self.transform = transform
-
-                def __len__(self):
-                    return len(self.df)
-
-                def __getitem__(self, idx):
-                    row = self.df.iloc[idx]
-                    img_path = os.path.join(self.img_dir, str(row["id"]) + ".png")
-                    image = Image.open(img_path).convert("RGB")
-                    if self.transform:
-                        image = self.transform(image)
-                    meta = torch.tensor([row["male"]], dtype=torch.float32)
-                    target = torch.tensor(row["boneage"], dtype=torch.float32)
-                    return image, meta, target
-
             transform = transforms.Compose([
                 transforms.Resize((224, 224)),
                 transforms.ToTensor(),
@@ -222,11 +204,7 @@ elif page == "Inference":
     gender = st.selectbox("Gender", ["Male", "Female"])
     chrono_age = st.number_input("Chronological Age (months)", min_value=0, max_value=240, value=120)
 
-    # ---------------------------
-    # Hybrid model fetch (GitHub LFS + Google Drive fallback)
-    # ---------------------------
     import gdown
-
     MODEL_PATH = "boneage_model.pth"
     FILE_ID = "1oD9hWWnwtFD8Qd4UwPMGruTyKYYZuBiK"  # Google Drive file ID
     URL = f"https://drive.google.com/uc?id={FILE_ID}"
@@ -244,7 +222,6 @@ elif page == "Inference":
 
     if uploaded_img:
         import shap
-        import cv2
 
         image = Image.open(uploaded_img).convert("RGB")
         transform = transforms.Compose([
@@ -289,10 +266,7 @@ elif page == "Inference":
         # Layout: Image left, results right
         col1, col2 = st.columns([1,1])
         with col1:
-            #st.image(image, caption="Uploaded X-ray", use_container_width=True)
-            #st.image(np.array(image), caption="Uploaded X-ray", use_container_width=True)
             st.image(image, caption="Uploaded X-ray")
-
 
         with col2:
             st.markdown("### Prediction Results")
@@ -303,65 +277,63 @@ elif page == "Inference":
         # ---- Tabs for explanations ----
         tab1, tab2, tab3 = st.tabs(["Grad-CAM", "SHAP Metadata", "Age Comparison"])
 
+        # ---------------------------
         # TAB 1: Grad-CAM
-        # TAB 1: Grad-CAM
-with tab1:
-    st.subheader("🔍 Grad-CAM Heatmap")
+        # ---------------------------
+        with tab1:
+            st.subheader("🔍 Grad-CAM Heatmap")
 
-    def generate_gradcam(model, img_tensor, meta_tensor, target_layer):
-        model.eval()
-        gradients, activations = [], []
+            def generate_gradcam(model, img_tensor, meta_tensor, target_layer):
+                model.eval()
+                gradients, activations = [], []
 
-        def backward_hook(module, grad_input, grad_output):
-            gradients.append(grad_output[0])
+                def backward_hook(module, grad_input, grad_output):
+                    gradients.append(grad_output[0])
 
-        def forward_hook(module, input, output):
-            activations.append(output)
+                def forward_hook(module, input, output):
+                    activations.append(output)
 
-        handle_fw = target_layer.register_forward_hook(forward_hook)
-        handle_bw = target_layer.register_backward_hook(backward_hook)
+                handle_fw = target_layer.register_forward_hook(forward_hook)
+                handle_bw = target_layer.register_backward_hook(backward_hook)
 
-        output = model(img_tensor.requires_grad_(), meta_tensor)
-        output = output.squeeze()
-        output.backward(retain_graph=True)
+                output = model(img_tensor.requires_grad_(), meta_tensor)
+                output = output.squeeze()
+                output.backward(retain_graph=True)
 
-        grads = gradients[0].detach().cpu().numpy()[0]
-        acts = activations[0].detach().cpu().numpy()[0]
+                grads = gradients[0].detach().cpu().numpy()[0]
+                acts = activations[0].detach().cpu().numpy()[0]
 
-        weights = np.mean(grads, axis=(1, 2))
-        cam = np.zeros(acts.shape[1:], dtype=np.float32)
-        for w, act in zip(weights, acts):
-            cam += w * act
+                weights = np.mean(grads, axis=(1, 2))
+                cam = np.zeros(acts.shape[1:], dtype=np.float32)
+                for w, act in zip(weights, acts):
+                    cam += w * act
 
-        cam = np.maximum(cam, 0)
-        cam = cam / cam.max()
-        handle_fw.remove()
-        handle_bw.remove()
-        return cam
+                cam = np.maximum(cam, 0)
+                cam = cam / cam.max()
+                handle_fw.remove()
+                handle_bw.remove()
+                return cam
 
-    target_layer = model.cnn.layer4[1].conv2
-    cam = generate_gradcam(model, img_tensor, meta_tensor, target_layer)
+            target_layer = model.cnn.layer4[1].conv2
+            cam = generate_gradcam(model, img_tensor, meta_tensor, target_layer)
 
-    # Prepare visualization
-    img_cv = np.array(image.resize((224, 224)))
-    cam_resized = cv2.resize(cam, (224, 224))
-    heatmap = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
-    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+            img_cv = np.array(image.resize((224, 224)))
+            cam_resized = cv2.resize(cam, (224, 224))
+            heatmap = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
+            heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+            superimposed = np.uint8(0.5 * heatmap + 0.5 * img_cv)
 
-    superimposed = np.uint8(0.5 * heatmap + 0.5 * img_cv)
+            if superimposed.ndim == 2:
+                superimposed = cv2.cvtColor(superimposed, cv2.COLOR_GRAY2RGB)
+            elif superimposed.shape[2] == 4:
+                superimposed = cv2.cvtColor(superimposed, cv2.COLOR_RGBA2RGB)
 
-    # ✅ Make sure it's always RGB uint8
-    if superimposed.ndim == 2:  # grayscale
-        superimposed = cv2.cvtColor(superimposed, cv2.COLOR_GRAY2RGB)
-    elif superimposed.shape[2] == 4:  # RGBA -> RGB
-        superimposed = cv2.cvtColor(superimposed, cv2.COLOR_RGBA2RGB)
+            superimposed = np.clip(superimposed, 0, 255).astype(np.uint8)
+            st.image(Image.fromarray(superimposed), caption="Grad-CAM Heatmap")
 
-    superimposed = np.clip(superimposed, 0, 255).astype(np.uint8)
-
-    # Show using PIL to be extra safe
-    st.image(Image.fromarray(superimposed), caption="Grad-CAM Heatmap")
-
-        # TAB 2: SHAP
+        # ---------------------------
+        # TAB 2: SHAP Metadata
+        # ---------------------------
         with tab2:
             st.subheader("📈 SHAP Metadata Explanation")
 
@@ -389,7 +361,9 @@ with tab1:
                 })
                 st.bar_chart(df_shap.set_index("Feature"))
 
-        # TAB 3: Comparison
+        # ---------------------------
+        # TAB 3: Age Comparison
+        # ---------------------------
         with tab3:
             st.subheader("📊 Chronological vs Predicted Age")
 
@@ -426,11 +400,3 @@ with tab1:
                     "💡 **Clinical Interpretation:** The predicted bone age **matches** the child's chronological age. "
                     "This suggests that skeletal development is proceeding at a normal rate."
                 )
-
-
-
-
-
-
-
-

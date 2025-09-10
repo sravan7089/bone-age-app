@@ -1,25 +1,16 @@
-
-# Core
 streamlit==1.36.0
 pandas==2.2.2
 numpy==1.26.4
 matplotlib==3.9.0
 Pillow==10.3.0
 
-# PyTorch + torchvision (compatible with Python 3.11)
 torch==2.2.2
-torchvision==0.17.1
+torchvision==0.17.2
 
-# SHAP for explainability
-shap==0.45.1
-
-# OpenCV (headless for cloud deployment)
-opencv-python-headless==4.9.0.80
-
-# Scikit-learn (for preprocessing / train-test split if needed)
 scikit-learn==1.5.0
-
-# Google Drive download helper
+shap==0.45.1
+opencv-python-headless==4.9.0.80
 gdown==4.7.1
+
 
 

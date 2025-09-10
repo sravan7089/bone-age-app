@@ -304,49 +304,62 @@ elif page == "Inference":
         tab1, tab2, tab3 = st.tabs(["Grad-CAM", "SHAP Metadata", "Age Comparison"])
 
         # TAB 1: Grad-CAM
-        with tab1:
-            st.subheader("🔍 Grad-CAM Heatmap")
+        # TAB 1: Grad-CAM
+with tab1:
+    st.subheader("🔍 Grad-CAM Heatmap")
 
-            def generate_gradcam(model, img_tensor, meta_tensor, target_layer):
-                model.eval()
-                gradients, activations = [], []
+    def generate_gradcam(model, img_tensor, meta_tensor, target_layer):
+        model.eval()
+        gradients, activations = [], []
 
-                def backward_hook(module, grad_input, grad_output):
-                    gradients.append(grad_output[0])
+        def backward_hook(module, grad_input, grad_output):
+            gradients.append(grad_output[0])
 
-                def forward_hook(module, input, output):
-                    activations.append(output)
+        def forward_hook(module, input, output):
+            activations.append(output)
 
-                handle_fw = target_layer.register_forward_hook(forward_hook)
-                handle_bw = target_layer.register_backward_hook(backward_hook)
+        handle_fw = target_layer.register_forward_hook(forward_hook)
+        handle_bw = target_layer.register_backward_hook(backward_hook)
 
-                output = model(img_tensor.requires_grad_(), meta_tensor)
-                output = output.squeeze()
-                output.backward(retain_graph=True)
+        output = model(img_tensor.requires_grad_(), meta_tensor)
+        output = output.squeeze()
+        output.backward(retain_graph=True)
 
-                grads = gradients[0].detach().cpu().numpy()[0]
-                acts = activations[0].detach().cpu().numpy()[0]
+        grads = gradients[0].detach().cpu().numpy()[0]
+        acts = activations[0].detach().cpu().numpy()[0]
 
-                weights = np.mean(grads, axis=(1, 2))
-                cam = np.zeros(acts.shape[1:], dtype=np.float32)
-                for w, act in zip(weights, acts):
-                    cam += w * act
+        weights = np.mean(grads, axis=(1, 2))
+        cam = np.zeros(acts.shape[1:], dtype=np.float32)
+        for w, act in zip(weights, acts):
+            cam += w * act
 
-                cam = np.maximum(cam, 0)
-                cam = cam / cam.max()
-                handle_fw.remove()
-                handle_bw.remove()
-                return cam
+        cam = np.maximum(cam, 0)
+        cam = cam / cam.max()
+        handle_fw.remove()
+        handle_bw.remove()
+        return cam
 
-            target_layer = model.cnn.layer4[1].conv2
-            cam = generate_gradcam(model, img_tensor, meta_tensor, target_layer)
+    target_layer = model.cnn.layer4[1].conv2
+    cam = generate_gradcam(model, img_tensor, meta_tensor, target_layer)
 
-            img_cv = np.array(image.resize((224, 224)))
-            cam_resized = cv2.resize(cam, (224, 224))
-            heatmap = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
-            heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-            superimposed = np.uint8(0.5 * heatmap + 0.5 * img_cv)
-            st.image(superimposed, caption="Grad-CAM Heatmap", use_container_width=True)
+    # Prepare visualization
+    img_cv = np.array(image.resize((224, 224)))
+    cam_resized = cv2.resize(cam, (224, 224))
+    heatmap = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
+    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
+    superimposed = np.uint8(0.5 * heatmap + 0.5 * img_cv)
+
+    # ✅ Make sure it's always RGB uint8
+    if superimposed.ndim == 2:  # grayscale
+        superimposed = cv2.cvtColor(superimposed, cv2.COLOR_GRAY2RGB)
+    elif superimposed.shape[2] == 4:  # RGBA -> RGB
+        superimposed = cv2.cvtColor(superimposed, cv2.COLOR_RGBA2RGB)
+
+    superimposed = np.clip(superimposed, 0, 255).astype(np.uint8)
+
+    # Show using PIL to be extra safe
+    st.image(Image.fromarray(superimposed), caption="Grad-CAM Heatmap")
 
         # TAB 2: SHAP
         with tab2:
@@ -413,6 +426,7 @@ elif page == "Inference":
                     "💡 **Clinical Interpretation:** The predicted bone age **matches** the child's chronological age. "
                     "This suggests that skeletal development is proceeding at a normal rate."
                 )
+
 
 
 

@@ -322,24 +322,41 @@ elif page == "Inference":
             def metadata_predict(x_meta_np):
                 x_meta_tensor = torch.tensor(x_meta_np, dtype=torch.float32)
                 with torch.no_grad():
-                    preds = model(img_tensor.repeat(x_meta_tensor.size(0),1,1,1), x_meta_tensor)
+                    preds = model(img_tensor.repeat(x_meta_tensor.shape[0], 1, 1, 1), x_meta_tensor)
                 return preds.numpy()
 
-            explainer = shap.Explainer(metadata_predict, np.array([[1 if gender == "Male" else 0, chrono_age]]))
-            shap_values = explainer(np.array([[1 if gender == "Male" else 0, chrono_age]]))
+            # Background dataset
+            background = np.array([
+                [0, 60],
+                [1, 100],
+                [0, 150],
+                [1, 200]
+            ])
+            test_sample = np.array([[1 if gender == "Male" else 0, chrono_age]])
+
+            explainer = shap.KernelExplainer(metadata_predict, background)
+            shap_values = explainer.shap_values(test_sample, nsamples=100)
 
             feature_names = ["Gender(Male=1)", "Chronological Age (months)"]
-            shap_values.feature_names = feature_names
 
             try:
+                shap.initjs()
                 fig, ax = plt.subplots()
-                shap.plots.waterfall(shap_values[0], show=False)
+                shap.plots._waterfall.waterfall_legacy(
+                    shap.Explanation(
+                        values=shap_values[0],
+                        base_values=explainer.expected_value,
+                        data=test_sample[0],
+                        feature_names=feature_names
+                    ),
+                    show=False
+                )
                 st.pyplot(fig)
             except Exception:
                 st.warning("⚠️ SHAP waterfall failed. Showing bar chart instead.")
                 df_shap = pd.DataFrame({
                     "Feature": feature_names,
-                    "SHAP Value": shap_values.values[0]
+                    "SHAP Value": shap_values[0]
                 })
                 st.bar_chart(df_shap.set_index("Feature"))
 
@@ -382,13 +399,6 @@ elif page == "Inference":
                     "💡 **Clinical Interpretation:** The predicted bone age **matches** the child's chronological age. "
                     "This suggests that skeletal development is proceeding at a normal rate."
                 )
-
-
-
-
-
-
-
 
 
 
@@ -765,5 +775,6 @@ elif page == "Inference":
 #                 st.warning(f"🔴 Predicted bone age is **delayed** by {-delta:.1f} months compared to chronological age.")
 #             else:
 #                 st.success("✅ Predicted bone age matches chronological age.")
+
 
 
